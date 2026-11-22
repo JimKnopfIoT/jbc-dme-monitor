@@ -4,7 +4,9 @@ Liest eine JBC DME-2A über USB-B aus und zeigt die vier Ports live an:
 Ist-/Solltemperatur, Stufen, Zustand, Leistung, Verlauf. Nur lesend, die Station
 bleibt bedienbar.
 
-![Desktop-Ansicht](screenshots/demo.png)
+![P1 heizt auf](screenshots/live-working.png)
+
+![Alle Tools in Ruhe](screenshots/live-idle.png)
 
 ## Start
 
