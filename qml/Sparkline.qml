@@ -1,7 +1,7 @@
 import QtQuick
 import "Theme.js" as T
 
-// Temperaturverlauf: Flaeche + Linie, Soll gestrichelt, feine Rasterlinien
+// Temperature history: area + line, dashed set point, fine grid
 Canvas {
     id: cv
     property var values: []
@@ -29,7 +29,7 @@ Canvas {
         function y(v) { return 1 + ph - (Math.max(vmin, Math.min(vmax, v)) - vmin) / (vmax - vmin) * ph }
         function x(i, n) { return x0 + pw - (n - 1 - i) * pw / (capacity - 1) }
 
-        // Raster 100/200/300/400
+        // grid 100/200/300/400
         ctx.font = lab + "px '" + T.font + "'"
         ctx.textAlign = "right"
         ctx.textBaseline = "middle"
@@ -45,7 +45,7 @@ Canvas {
         var n = values.length
         if (n < 2) return
 
-        // Soll gestrichelt
+        // dashed set point
         ctx.strokeStyle = T.alpha(T.text, 0.35)
         ctx.lineWidth = 1
         ctx.setLineDash ? ctx.setLineDash([4, 4]) : null
@@ -60,7 +60,7 @@ Canvas {
         ctx.stroke()
         ctx.setLineDash ? ctx.setLineDash([]) : null
 
-        // Flaeche
+        // area
         var grad = ctx.createLinearGradient(0, 0, 0, h)
         grad.addColorStop(0, T.alpha(lineColor, 0.28))
         grad.addColorStop(1, T.alpha(lineColor, 0.0))
@@ -76,7 +76,7 @@ Canvas {
         }
         if (first >= 0) { ctx.lineTo(x(last, n), h); ctx.closePath(); ctx.fill() }
 
-        // Linie
+        // line
         ctx.strokeStyle = lineColor
         ctx.lineWidth = Math.max(1.5, sp * 0.12)
         ctx.lineJoin = "round"
@@ -89,7 +89,7 @@ Canvas {
         }
         ctx.stroke()
 
-        // Endpunkt
+        // end point
         if (last >= 0) {
             ctx.fillStyle = lineColor
             ctx.beginPath()

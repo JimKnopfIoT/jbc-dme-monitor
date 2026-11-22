@@ -1,119 +1,118 @@
-# JBC DME-2A — USB-Protokoll (lesender Teil)
+# JBC DME-2A — USB protocol (read part)
 
-Beschreibung der USB-Schnittstelle der JBC DME-2A, soweit sie zum **Auslesen** der
-Station nötig ist. Am Gerät verifiziert mit `DME_TCH_04`, Software `8886937`,
-Hardware `0012408C`.
+The USB interface of the JBC DME-2A, as far as needed to **read** the station.
+Verified on `DME_TCH_04`, software `8886937`, hardware `0012408C`.
 
-Die Kommandonummern und Feldformate wurden für die Interoperabilität aus JBCs frei
-herunterladbarem „JBC Stations Updater“ ermittelt und an der Station nachgemessen.
-Dieses Repository enthält keinen Code und keine Dateien von JBC.
+Command numbers and field formats were determined for interoperability from JBC's
+freely downloadable "JBC Stations Updater" and checked against the station.
+This repository contains no code or files from JBC.
 
-## Physikalische Schicht
+## Physical layer
 
-- Buchse **USB-B** hinten an der Station.
-- Die Station meldet sich als **STM32 Virtual ComPort**, USB `0483:5740`, CDC-ACM.
-  Unter Linux ist das `/dev/ttyACM*`, es braucht keinen Treiber.
-- Baudrate ist bei CDC egal. JBCs PC-Software setzt 500000 8N1.
-- Achtung: `0483:5740` ist die Standardkennung für STM32-CDC-Geräte. Andere Geräte
-  können sich genauso melden. Eindeutig ist erst die Antwort auf `M_FIRMWARE`.
-- Hinweis: Die RJ12-Buchse daneben ist der **Roboter-Anschluss** (RS232, ASCII-Protokoll,
-  von JBC dokumentiert). Im Robotermodus ist die Station an der Front komplett
-  gesperrt, für reines Mitlesen ist er also ungeeignet.
+- **USB-B** socket at the back of the station.
+- The station enumerates as **STM32 Virtual ComPort**, USB `0483:5740`, CDC-ACM.
+  On Linux that is `/dev/ttyACM*`, no driver needed.
+- The baud rate does not matter for CDC. JBC's PC software sets 500000 8N1.
+- `0483:5740` is the generic ID of STM32 CDC devices; other devices may use it too.
+  Only the reply to `M_FIRMWARE` identifies the station.
+- The RJ12 socket next to it is the **robot port** (RS232, ASCII protocol documented
+  by JBC). Robot mode locks the station's front panel completely, so it is not
+  suitable for monitoring.
 
-## Rahmen (Protokoll 02)
+## Frame (protocol 02)
 
 ```
 DLE STX | SRC DST FID CMD LEN DATA[LEN] BCC | DLE ETX
 0x10 0x02                                    0x10 0x03
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `SRC` | Absenderadresse. Bei Antworten ist Bit 7 gesetzt (`SRC | 0x80`). |
-| `DST` | Zieladresse |
-| `FID` | Frame-ID. Anfragen fortlaufend 1…239; Handshake 253, Firmware-Abfrage 237. Die Antwort trägt dieselbe FID. |
-| `CMD` | Kommando |
-| `LEN` | Anzahl Datenbytes |
-| `BCC` | XOR über alle Bytes von `STX` bis `ETX` (ohne Stuffing), mit `BCC = 0` gerechnet. Ein gültiger Rahmen ergibt XOR 0. |
+| `SRC` | Sender address. Replies have bit 7 set (`SRC | 0x80`). |
+| `DST` | Destination address |
+| `FID` | Frame ID. Requests count 1…239; handshake 253, firmware query 237. The reply carries the same FID. |
+| `CMD` | Command |
+| `LEN` | Number of data bytes |
+| `BCC` | XOR over all bytes from `STX` to `ETX` (unstuffed), computed with `BCC = 0`. A valid frame XORs to 0. |
 
-**Stuffing:** Ein `0x10` innerhalb von `SRC…BCC` wird als `0x10 0x10` gesendet.
-`DLE STX` und `DLE ETX` selbst werden nicht verdoppelt.
+**Stuffing:** a `0x10` inside `SRC…BCC` is sent as `0x10 0x10`. `DLE STX` and
+`DLE ETX` themselves are not doubled.
 
-## Verbindungsaufbau
+## Connection
 
-1. Die Station sendet von sich aus etwa 15× pro Sekunde einen **Handshake**:
-   `CMD 0`, `FID 253`, `SRC` = Stationsadresse (hier `0x10`), `DST` = die Adresse,
-   die sie dem PC zuteilt (hier `0x1d`), ein Datenbyte.
-   Beispiel auf der Leitung: `10 02 10 10 1d fd 00 01 1d ed 10 03`.
-2. Der PC quittiert mit `CMD 0`, `FID 253`, Daten `06` (ACK) und `SRC = PC | 0x80`.
-3. Der PC fragt die Kennung ab: `CMD 33` (`M_FIRMWARE`), `FID 237`, ohne Daten.
-   Antwort als ASCII: `"02:DME_TCH_04:8886937:0012408C"` = Protokoll, Modell, SW, HW.
-4. Danach weiter Anfragen mit FID 1…239. **Jeden weiteren Handshake der Station
-   quittiert der PC wie in Schritt 2**, sonst baut sie die Verbindung ab.
+1. The station sends a **handshake** about 15 times per second on its own:
+   `CMD 0`, `FID 253`, `SRC` = station address (here `0x10`), `DST` = the address it
+   assigns to the PC (here `0x1d`), one data byte.
+   On the wire: `10 02 10 10 1d fd 00 01 1d ed 10 03`.
+2. The PC acknowledges with `CMD 0`, `FID 253`, data `06` (ACK) and `SRC = PC | 0x80`.
+3. The PC asks for the identification: `CMD 33` (`M_FIRMWARE`), `FID 237`, no data.
+   ASCII reply: `"02:DME_TCH_04:8886937:0012408C"` = protocol, model, SW, HW.
+4. Further requests use FID 1…239. **Every later handshake from the station is
+   acknowledged as in step 2**, otherwise it drops the connection.
 
-Ein Wechsel in einen Steuer- oder Monitormodus (`CMD 225` mit `":M"`/`":C"`) ist
-zum Lesen **nicht nötig**. Ohne ihn meldet `CMD 224` den Status `":N"`, die Station
-beantwortet die Lesekommandos trotzdem und bleibt an der Front bedienbar.
+Switching to a control or monitor mode (`CMD 225` with `":M"`/`":C"`) is **not
+needed** for reading. Without it, `CMD 224` reports `":N"`; the station still answers
+the read commands and stays usable at its front panel.
 
-## Lesekommandos
+## Read commands
 
-Ports werden 0…3 adressiert (Port 1…4 an der Station). Temperaturen kommen in einer
-internen Einheit: **Wert ÷ 9 = °C**.
+Ports are addressed 0…3 (port 1…4 on the station). Temperatures use an internal
+unit: **value ÷ 9 = °C**.
 
-| CMD | Name | Anfrage | Antwort |
+| CMD | Name | Request | Reply |
 |---|---|---|---|
-| 33 | `M_FIRMWARE` | – | ASCII `Protokoll:Modell:SW:HW` |
-| 48 | `M_INF_PORT` | `[port]` | 12 oder 14 Byte, siehe unten |
-| 51 | `M_R_LEVELSTEMPS` | `[port, tool]` | 13 Byte, siehe unten |
-| 80 | `M_R_SELECTTEMP` | `[port]` | `[T lo, T hi, port]`, uint16 **LE** ÷ 9 = Grund-Solltemperatur |
-| 82 | `M_R_TIPTEMP` | `[port]` | 5 Byte: `[0..1]` uint16 **LE** ÷ 9 = **Ist-Temperatur der Spitze**, `[4]` Port |
-| 224 | `M_R_USB_CONNECTSTATUS` | – | ASCII, z. B. `":N"` |
+| 33 | `M_FIRMWARE` | – | ASCII `protocol:model:SW:HW` |
+| 48 | `M_INF_PORT` | `[port]` | 12 or 14 bytes, see below |
+| 51 | `M_R_LEVELSTEMPS` | `[port, tool]` | 13 bytes, see below |
+| 80 | `M_R_SELECTTEMP` | `[port]` | `[T lo, T hi, port]`, uint16 **LE** ÷ 9 = base set temperature |
+| 82 | `M_R_TIPTEMP` | `[port]` | 5 bytes: `[0..1]` uint16 **LE** ÷ 9 = **tip temperature**, `[4]` port |
+| 224 | `M_R_USB_CONNECTSTATUS` | – | ASCII, e.g. `":N"` |
 
 ### `M_INF_PORT` (48)
 
-| Byte | Inhalt |
+| Byte | Content |
 |---|---|
-| 0 | Tool-Nummer (siehe unten), 0 = kein Tool |
-| 1 | Fehler, 0 = ok |
-| 2–3 | enthält auf der DME-2A **nicht** die Ist-Temperatur (stets gleich dem Grund-Sollwert, Byte-Reihenfolge vertauscht). Ist-Temperatur über `82` lesen. |
-| 6–7 | Leistung in ‰, uint16 **Big-Endian** |
-| 10 | Zustandsbits: `0x01` Ablage, `0x02` Sleep, `0x04` Hibernation, `0x08` Extractor/Ablage, `0x10` Entlöten |
-| 11 | nur bei 14 Byte: Änderungsflags |
-| letztes | Port |
+| 0 | Tool number (see below), 0 = no tool |
+| 1 | Error, 0 = ok |
+| 2–3 | On the DME-2A this is **not** the tip temperature (always the base set point, byte order swapped). Read the tip temperature with `82`. |
+| 6–7 | Power in ‰, uint16 **big-endian** |
+| 10 | State bits: `0x01` stand, `0x02` sleep, `0x04` hibernation, `0x08` extractor/stand, `0x10` desoldering |
+| 11 | Only with 14 bytes: change flags |
+| last | Port |
 
-Ablauf beim Zurücklegen eines Tools: `0x00` (arbeiten) → `0x01` (Ablage, Verzögerung)
-→ `0x02` (Sleep) → `0x04` (Hibernation).
+When a tool is put back: `0x00` (working) → `0x01` (stand, delay) → `0x02` (sleep)
+→ `0x04` (hibernation).
 
 ### `M_R_LEVELSTEMPS` (51)
 
-| Byte | Inhalt |
+| Byte | Content |
 |---|---|
-| 0 | Stufen ein (1) / aus (0) |
-| 1 | aktive Stufe 0…2, `255` = keine |
-| 2, 5, 8 | Stufe 1/2/3 ein/aus |
-| 3–4, 6–7, 9–10 | Temperatur der Stufe 1/2/3, uint16 LE ÷ 9 |
+| 0 | Levels on (1) / off (0) |
+| 1 | Active level 0…2, `255` = none |
+| 2, 5, 8 | Level 1/2/3 enabled |
+| 3–4, 6–7, 9–10 | Temperature of level 1/2/3, uint16 LE ÷ 9 |
 
-**Effektiver Sollwert:** Sind Stufen aktiv, gilt die Temperatur der aktiven Stufe,
-sonst der Wert aus `80`. Stationen mit vorgewählten Stufen melden in `80` sonst immer
-nur den Grundwert.
+**Effective set point:** if levels are active, the temperature of the active level
+applies, otherwise the value from `80`. With preset levels, `80` only ever reports
+the base value.
 
-### Tool-Nummern
+### Tool numbers
 
-| Nr. | Tool |
+| No. | Tool |
 |---|---|
 | 1 | T210 |
 | 2 | T245 |
-| 3 | PA (Pinzette) |
+| 3 | PA (tweezers) |
 | 4 | HT |
 | 5 | DS |
 | 6 | DR |
 | 7 | NT105 |
 | 8 | NP105 |
 | 9 | T470 |
-| 10 | DT530 (am Gerät bestimmt) |
+| 10 | DT530 (identified on the station) |
 
-## Schreibende Kommandos
+## Write commands
 
-Es gibt sie (Solltemperatur, Stufen, Sleep-Zeiten, Sperren, Firmware-Update …).
-Dieses Projekt verwendet bewusst **keine** davon. `jbc_dme.py` lässt nur die oben
-gelisteten Kommandos und den Handshake zu und verweigert alles andere.
+They exist (set temperature, levels, sleep times, locks, firmware update …).
+This project deliberately uses **none** of them. `jbc_dme.py` only allows the commands
+listed above plus the handshake and refuses everything else.

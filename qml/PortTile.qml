@@ -25,7 +25,7 @@ Rectangle {
     Behavior on border.color { ColorAnimation { duration: 400 } }
     clip: true
 
-    // farbiger Schein von oben, stark beim Arbeiten
+    // coloured glow from the top, strong while working
     Rectangle {
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
         height: parent.height * 0.65
@@ -43,7 +43,7 @@ Rectangle {
         anchors.margins: tile.sp * 1.2
         spacing: tile.sp * 0.5
 
-        // Kopf: Port, Tool, Status
+        // head: port, tool, state
         RowLayout {
             Layout.fillWidth: true
             spacing: tile.sp * 0.6
@@ -68,7 +68,7 @@ Rectangle {
             }
         }
 
-        // Grosse Temperatur
+        // large temperature
         RowLayout {
             Layout.fillWidth: true
             spacing: tile.sp * 0.3
@@ -93,14 +93,14 @@ Rectangle {
                     font.weight: Font.Light
                 }
                 Text {
-                    text: isNaN(tile.setT) ? "Soll –" : "Soll " + Math.round(tile.setT) + " °C"
+                    text: isNaN(tile.setT) ? "Set –" : "Set " + Math.round(tile.setT) + " °C"
                     color: T.textDim
                     font.family: T.font; font.pixelSize: tile.sp * 1.0
                     font.weight: Font.Light
                 }
             }
             Item { Layout.fillWidth: true }
-            // Abweichung zum Soll
+            // deviation from set point
             Text {
                 Layout.alignment: Qt.AlignBottom
                 Layout.bottomMargin: big.font.pixelSize * 0.18
@@ -112,13 +112,13 @@ Rectangle {
             }
         }
 
-        // Temperaturstufen
+        // temperature levels
         RowLayout {
             Layout.fillWidth: true
             spacing: tile.sp * 0.5
             visible: tile.hasTool
             Text {
-                text: "Stufen"
+                text: "Levels"
                 color: T.textLow
                 font.family: T.font; font.pixelSize: tile.sp * 0.8
             }
@@ -134,7 +134,7 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: "Leistung"
+                text: "Power"
                 color: T.textDim
                 font.family: T.font; font.pixelSize: tile.sp * 0.85; font.weight: Font.Light
             }
@@ -147,7 +147,7 @@ Rectangle {
             }
         }
 
-        // Leistungsbalken
+        // power bar
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 0
@@ -166,7 +166,7 @@ Rectangle {
             }
         }
 
-        // Verlauf
+        // history
         Sparkline {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -179,11 +179,11 @@ Rectangle {
         }
     }
 
-    // Offline-Hinweis
+    // offline hint
     Text {
         anchors.centerIn: parent
         visible: !tile.online
-        text: "keine Verbindung"
+        text: "not connected"
         color: T.textLow
         font.family: T.font; font.pixelSize: tile.sp * 1.1; font.weight: Font.Light
     }

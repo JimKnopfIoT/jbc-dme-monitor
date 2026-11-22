@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""JBC DME-2A zyklisch lesen und als Text/CSV mitschreiben (nur lesend).
+"""Poll a JBC DME-2A and log it as text/CSV (read-only).
 
-Aufruf: python3 tools/jbc_monitor.py [--port /dev/ttyACM0] [--seconds 120] [--csv datei.csv]
+Usage: python3 tools/jbc_monitor.py [--port /dev/ttyACM0] [--seconds 120] [--csv file.csv]
 
-Ausgabe je Zeile (2x pro Sekunde): Zeit und fuer jeden Port Tool, Zustand,
-Ist-/Solltemperatur und Leistung. Mit --csv zusaetzlich maschinenlesbar.
+One line per sample (twice per second): time and, for each port, tool, state,
+tip/set temperature and power. With --csv also machine-readable.
 """
 import argparse
 import csv

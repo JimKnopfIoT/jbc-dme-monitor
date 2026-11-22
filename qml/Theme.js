@@ -1,5 +1,5 @@
 .pragma library
-// Palette wie PM5 / SysMetrics: dunkler Verlauf, kuehle Akzente, warme Warnfarben.
+// Palette: dark gradient, cool accents, warm warning colours.
 
 var bgTop    = "#1b2029"
 var bgMid    = "#12161d"
@@ -36,15 +36,15 @@ function stateColor(s) {
 }
 
 function stateLabel(s) {
-    if (s === "work")  return "ARBEITEN"
-    if (s === "stand") return "ABLAGE"
+    if (s === "work")  return "WORKING"
+    if (s === "stand") return "STAND"
     if (s === "sleep") return "SLEEP"
     if (s === "hiber") return "HIBERNATION"
-    if (s === "error") return "FEHLER"
-    return "KEIN TOOL"
+    if (s === "error") return "ERROR"
+    return "NO TOOL"
 }
 
-// Temperatur -> Farbe: kalt cyan, warm teal/amber, heiss orange, zu heiss rot
+// temperature -> colour: cold cyan, warm teal/amber, hot orange, too hot red
 function tempColor(t, set) {
     if (t === null || t === undefined || isNaN(t)) return textLow
     if (set && t > set + 25) return red

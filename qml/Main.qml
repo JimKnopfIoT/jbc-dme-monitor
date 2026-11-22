@@ -25,7 +25,7 @@ Window {
         }
     }
 
-    // warmer Schimmer unten links, sobald ein Tool arbeitet (wie PM5)
+    // warm glow bottom left while any tool is working
     Canvas {
         anchors.fill: parent
         opacity: win.anyWorking ? 1.0 : 0.0
@@ -56,7 +56,7 @@ Window {
         anchors.margins: win.sp * 1.6
         spacing: win.sp * 1.2
 
-        // ---- Kopfzeile ------------------------------------------------
+        // ---- Header ---------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
             spacing: win.sp * 1.2
@@ -84,7 +84,7 @@ Window {
                     font.weight: Font.Light
                 }
                 Text {
-                    text: station.connected ? (station.info.port || "") : "Station per USB-B anschließen"
+                    text: station.connected ? (station.info.port || "") : "Connect the station via USB-B"
                     color: T.cyan
                     font.family: T.font; font.pixelSize: win.sp * 0.85
                     font.weight: Font.Light
@@ -105,7 +105,7 @@ Window {
                 RowLayout {
                     Layout.alignment: Qt.AlignRight
                     spacing: 8
-                    Pill { label: "NUR LESEN"; tint: T.cyan; size: win.sp * 0.75 }
+                    Pill { label: "READ-ONLY"; tint: T.cyan; size: win.sp * 0.75 }
                     Text {
                         id: clock
                         color: T.textDim
@@ -145,12 +145,12 @@ Window {
             }
         }
 
-        // ---- Fußzeile ---------------------------------------------------
+        // ---- Footer ---------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
             Text {
-                text: "Verlauf " + Math.round(station.histSeconds / 60) + " min  ·  Abfrage 2×/s  ·  "
-                      + "Monitor ohne Steuerung, Station bleibt bedienbar"
+                text: "History " + Math.round(station.histSeconds / 60) + " min  ·  polling 2×/s  ·  "
+                      + "monitor only, the station stays usable"
                 color: T.textLow
                 font.family: T.font; font.pixelSize: win.sp * 0.8
                 font.weight: Font.Light

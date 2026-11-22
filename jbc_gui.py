@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""JBC DME-2A Monitor - Desktop-GUI (PySide6/QML), nur lesend.
+"""JBC DME-2A Monitor - desktop GUI (PySide6/QML), read-only.
 
-Aufruf:
-    python3 jbc_gui.py                 # Station automatisch suchen
+Usage:
+    python3 jbc_gui.py                 # find the station automatically
     python3 jbc_gui.py --port /dev/ttyACM0
-    python3 jbc_gui.py --demo          # ohne Station, simulierte Daten
+    python3 jbc_gui.py --demo          # no station, simulated data
     python3 jbc_gui.py --demo --screenshot shot.png
 """
 import argparse
@@ -17,7 +17,7 @@ import time
 from PySide6.QtCore import QObject, QThread, QTimer, QUrl, Property, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtQuick import QQuickWindow  # noqa: F401  (Wrapper fuer grabWindow)
+from PySide6.QtQuick import QQuickWindow  # noqa: F401  (wrapper for grabWindow)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -48,7 +48,7 @@ class Worker(QThread):
             dme = jbc_dme.DME(self.port)
             try:
                 info = dme.connect()
-                self.connectedChanged.emit(True, "verbunden", info)
+                self.connectedChanged.emit(True, "connected", info)
                 while not self._stop:
                     t0 = time.monotonic()
                     self.data.emit(dme.read_all())
@@ -99,7 +99,7 @@ class Station(QObject):
     def __init__(self, port=None, demo=False):
         super().__init__()
         self._connected = False
-        self._message = "suche Station …"
+        self._message = "looking for station …"
         self._info = {}
         self._ports = []
         self._hist = [[] for _ in range(4)]
@@ -164,7 +164,7 @@ class Station(QObject):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="JBC DME-2A Monitor (nur lesend)")
+    ap = argparse.ArgumentParser(description="JBC DME-2A Monitor (read-only)")
     ap.add_argument("--port")
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--screenshot")

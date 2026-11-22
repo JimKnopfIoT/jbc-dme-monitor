@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""JBC DME-2A ueber USB-B auslesen - nur lesend.
+"""Read a JBC DME-2A over USB-B - read-only.
 
-Protokoll abgeleitet aus JBC_Connect.dll (JBC Stations Updater, frei
-herunterladbar) und am Geraet verifiziert (DME_TCH_04, SW 8886937).
+Protocol determined for interoperability from JBC's freely downloadable
+"JBC Stations Updater" and verified on the station (DME_TCH_04, SW 8886937).
+See PROTOCOL.md.
 
-Physisch: STM32 Virtual ComPort, USB 0483:5740, /dev/ttyACM*.
-Rahmen (Protocol_02):
+Physical: STM32 Virtual ComPort, USB 0483:5740, /dev/ttyACM*.
+Frame (protocol 02):
     DLE STX | src dst FID cmd len data.. BCC | DLE ETX
-    0x10 in den Daten wird verdoppelt. BCC = XOR ueber STX..ETX ohne
-    Stuffing. Antworten der Station: src | 0x80.
-Verbindung:
-    Station sendet zyklisch HS (cmd 0, FID 253, dst = PC-Adresse).
-    PC quittiert jeden HS mit Daten [0x06], src = pc | 0x80.
-    Danach Anfragen mit FID 1..239.
+    0x10 inside the frame is doubled. BCC = XOR over STX..ETX without
+    stuffing. Station replies carry src | 0x80.
+Connection:
+    The station sends a handshake periodically (cmd 0, FID 253, dst = PC address).
+    The PC acknowledges every handshake with data [0x06], src = pc | 0x80.
+    Requests then use FID 1..239.
 
-Diese Bibliothek sendet ausschliesslich die Kommandos in READ_ONLY_COMMANDS.
-Alles andere wird verweigert, damit die Station nicht veraendert wird.
+This library only sends the commands in READ_ONLY_COMMANDS. Anything else is
+refused so the station is never changed.
 """
 import glob
 import os
@@ -40,10 +41,10 @@ READ_ONLY_COMMANDS = {
 TOOLS = {
     0: "", 1: "T210", 2: "T245", 3: "PA", 4: "HT", 5: "DS", 6: "DR",
     7: "NT105", 8: "NP105", 9: "T470",
-    10: "DT530",   # nicht in JBC_Connect.dll, am Geraet bestimmt (2026-11-22)
+    10: "DT530",   # not in JBC's tool table, identified on the station
 }
 
-# Statusbits aus M_INF_PORT [10]
+# status bits in M_INF_PORT byte 10
 ST_STAND = 0x01
 ST_SLEEP = 0x02
 ST_HIBER = 0x04
@@ -54,7 +55,7 @@ USB_VID_PID = "0483:5740"
 
 
 def find_port():
-    """Station suchen: zuerst by-id (STM32 VCP), sonst erstes ttyACM."""
+    """Find the station: by-id link of the STM32 VCP first, else the first ttyACM."""
     for p in sorted(glob.glob("/dev/serial/by-id/*STMicroelectronics*Virtual*")):
         return os.path.realpath(p)
     acm = sorted(glob.glob("/dev/ttyACM*"))
@@ -137,7 +138,7 @@ class StationError(Exception):
 
 
 class DME:
-    """Verbindung zu einer DME-2A. Nicht thread-safe: aus einem Thread benutzen."""
+    """Connection to a DME-2A. Not thread-safe: use it from one thread."""
 
     def __init__(self, path=None):
         self.path = path or find_port()
@@ -153,7 +154,7 @@ class DME:
     # -- Low level -------------------------------------------------------
     def open(self):
         if not self.path:
-            raise StationError("keine Station gefunden")
+            raise StationError("no station found")
         fd = os.open(self.path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         a = termios.tcgetattr(fd)
         a[0] = a[1] = a[3] = 0
@@ -174,7 +175,7 @@ class DME:
 
     def _send(self, src, cmd, fid, data=b""):
         if cmd not in READ_ONLY_COMMANDS:
-            raise StationError(f"Kommando {cmd} ist nicht freigegeben (nur lesen)")
+            raise StationError(f"command {cmd} is not allowed (read-only)")
         os.write(self.fd, encode(src, self.st, fid, cmd, data))
 
     def _read(self, timeout):
@@ -211,7 +212,7 @@ class DME:
                     return f["data"]
         return None
 
-    # -- Verbindung ------------------------------------------------------
+    # -- Connection ------------------------------------------------------
     def connect(self, timeout=2.0):
         self.open()
         end = time.monotonic() + timeout
@@ -223,7 +224,7 @@ class DME:
                     break
         if self.st is None:
             self.close()
-            raise StationError("kein Handshake von der Station")
+            raise StationError("no handshake from the station")
         fw = None
         end = time.monotonic() + 1.0
         self._send(self.pc, CMD_FIRMWARE, 237)
@@ -241,9 +242,9 @@ class DME:
         }
         return self.info
 
-    # -- Daten -----------------------------------------------------------
+    # -- Data ------------------------------------------------------------
     def read_port(self, p, levels_every=5.0):
-        """Ein Port (0..3) als dict. None-Werte, wenn keine Antwort."""
+        """One port (0..3) as a dict. Values are None if there was no reply."""
         r = {"port": p + 1, "tool_id": 0, "tool": "", "error": 0, "status": 0,
              "state": "none", "temp": None, "set": None, "power": None,
              "levels": None, "level": None}
@@ -296,7 +297,7 @@ class DME:
     def read_all(self):
         ports = [self.read_port(p) for p in range(4)]
         if all(p["temp"] is None and p["tool_id"] == 0 for p in ports):
-            raise StationError("Station antwortet nicht")
+            raise StationError("station does not respond")
         return ports
 
 

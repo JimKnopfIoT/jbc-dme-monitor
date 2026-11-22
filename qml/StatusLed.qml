@@ -1,7 +1,7 @@
 import QtQuick
 import "Theme.js" as T
 
-// Glow-LED wie im PM5-Header
+// Glowing status LED
 Item {
     id: led
     property bool on: false
@@ -9,7 +9,7 @@ Item {
     readonly property color c: on ? T.green : T.red
     width: size; height: size
 
-    Rectangle {           // aeusserer Hof
+    Rectangle {           // outer halo
         anchors.centerIn: parent
         width: led.size * 1.5; height: width; radius: width / 2
         color: T.alpha(led.c, 0.06)
@@ -31,7 +31,7 @@ Item {
         width: led.size * 0.62; height: width; radius: width / 2
         color: T.alpha(led.c, 0.25)
     }
-    Rectangle {           // Kern
+    Rectangle {           // core
         anchors.centerIn: parent
         width: led.size * 0.42; height: width; radius: width / 2
         color: led.c

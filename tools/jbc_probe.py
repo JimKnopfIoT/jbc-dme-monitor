@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Einmalige Abfrage einer JBC DME-2A mit Rohdaten (nur lesend).
+"""One-shot query of a JBC DME-2A with raw data (read-only).
 
-Verbindet, liest die Kennung und fragt fuer jeden Port die Rohantworten von
-48 (INF_PORT), 80 (SELECTTEMP), 82 (TIPTEMP) und 51 (LEVELSTEMPS) ab.
-Gedacht zum Nachpruefen der Feldzuordnung, siehe PROTOCOL.md.
+Connects, reads the identification and, for every port, the raw replies to
+48 (INF_PORT), 80 (SELECTTEMP), 82 (TIPTEMP) and 51 (LEVELSTEMPS).
+Meant for checking the field layout, see PROTOCOL.md.
 
-Aufruf: python3 tools/jbc_probe.py [/dev/ttyACM0]
+Usage: python3 tools/jbc_probe.py [/dev/ttyACM0]
 """
 import os
 import sys
@@ -17,11 +17,11 @@ import jbc_dme  # noqa: E402
 def main():
     d = jbc_dme.DME(sys.argv[1] if len(sys.argv) > 1 else None)
     info = d.connect()
-    print(f"Station: {info['model']}  SW {info['sw']}  HW {info['hw']}  Protokoll {info['protocol']}  ({info['port']})")
-    print(f"Adressen: Station 0x{d.st:02x}, PC 0x{d.pc:02x}")
+    print(f"Station: {info['model']}  SW {info['sw']}  HW {info['hw']}  protocol {info['protocol']}  ({info['port']})")
+    print(f"Addresses: station 0x{d.st:02x}, PC 0x{d.pc:02x}")
     try:
         usb = d.request(jbc_dme.CMD_R_USB_CONNECTSTATUS)
-        print(f"USB-Verbindungsstatus (224): {usb!r}")
+        print(f"USB connect status (224): {usb!r}")
         for p in range(4):
             inf = d.request(jbc_dme.CMD_INF_PORT, bytes([p]))
             sel = d.request(jbc_dme.CMD_R_SELECTTEMP, bytes([p]))
@@ -33,8 +33,8 @@ def main():
                               ("82 TIPTEMP", tip), ("51 LEVELSTEMPS", lv)):
                 print(f"  {name:15s} {raw.hex(' ') if raw else '-'}")
             r = d.read_port(p)
-            print(f"  -> {r['tool'] or 'kein Tool'}, {r['state']}, Ist {r['temp']}, Soll {r['set']}, "
-                  f"Leistung {r['power']} %, Stufen {r['levels']} aktiv {r['level']}")
+            print(f"  -> {r['tool'] or 'no tool'}, {r['state']}, tip {r['temp']}, set {r['set']}, "
+                  f"power {r['power']} %, levels {r['levels']} active {r['level']}")
     finally:
         d.close()
 
