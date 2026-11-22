@@ -1,25 +1,25 @@
 # JBC DME-2A Monitor
 
-Liest eine JBC DME-2A über USB-B aus und zeigt die vier Ports live an:
-Ist-/Solltemperatur, Stufen, Zustand, Leistung, Verlauf. Nur lesend, die Station
-bleibt bedienbar.
+Reads a JBC DME-2A soldering station over its USB-B port and shows all four ports
+live: tip and set temperature, temperature levels, state, power, history.
+Read-only, the station stays fully usable.
 
-![P1 heizt auf](screenshots/live-working.png)
+![P1 heating up](screenshots/live-working.png)
 
-![Alle Tools in Ruhe](screenshots/live-idle.png)
+![All tools idle](screenshots/live-idle.png)
 
-## Start
+## Run
 
 ```sh
 pip install -r requirements.txt
-./jbc-gui.sh                  # Station automatisch suchen
+./jbc-gui.sh                  # find the station automatically
 ./jbc-gui.sh --port /dev/ttyACM0
-./jbc-gui.sh --demo           # ohne Station
+./jbc-gui.sh --demo           # without a station
 ```
 
-Zugriff auf `/dev/ttyACM*` über die Gruppe `uucp` bzw. `dialout`.
+Access to `/dev/ttyACM*` via the `uucp` or `dialout` group.
 
-## Bibliothek
+## Library
 
 ```python
 import jbc_dme
@@ -30,26 +30,26 @@ for p in d.read_all():
 d.close()
 ```
 
-`jbc_dme.py` hat keine Abhängigkeiten und sendet nur Lesekommandos.
-Protokoll: [PROTOCOL.md](PROTOCOL.md).
+`jbc_dme.py` has no dependencies and only sends read commands.
+Protocol: [PROTOCOL.md](PROTOCOL.md).
 
-## Werkzeuge
+## Tools
 
 ```sh
-python3 tools/jbc_probe.py                  # Kennung + Rohdaten
-python3 tools/jbc_monitor.py --csv log.csv  # Mitschnitt
+python3 tools/jbc_probe.py                  # identification + raw data
+python3 tools/jbc_monitor.py --csv log.csv  # logging
 ```
 
-## Getestet
+## Tested
 
-DME-2A (`DME_TCH_04`, SW 8886937) mit T210, T245, PA, DT530.
+DME-2A (`DME_TCH_04`, SW 8886937) with T210, T245, PA, DT530.
 
-## Hinweis
+## Note
 
-JBC ist eine Marke der JBC Soldering S.L. Kein Bezug zu JBC, enthält keinen Code
-oder Dateien von JBC.
+JBC is a trademark of JBC Soldering S.L. Not affiliated with JBC; contains no code
+or files from JBC.
 
-## Lizenz
+## License
 
 MIT
 
