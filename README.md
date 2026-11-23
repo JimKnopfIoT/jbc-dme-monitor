@@ -85,7 +85,9 @@ cfg = d.read_settings()                # {"station": {...}, "ports": [...]}
 cfg["ports"][1]["sleep_temp"] = 180
 back, written, errors = d.apply_settings(cfg)
 ```
-Protocol: [PROTOCOL.md](PROTOCOL.md).
+With `control_hold=10` the connection stays in control mode for 10 s after the
+last write, so the station's front panel notices it and shows the new values
+(the GUI does this). Protocol: [PROTOCOL.md](PROTOCOL.md).
 
 ## Tools
 

@@ -48,6 +48,9 @@ def tr(text, n=-1):
 
 HIST_SECONDS = 180
 POLL_INTERVAL = 0.5
+# Stay in control mode this long after a write so the station's front panel
+# notices it and shows the new values afterwards (see PROTOCOL.md).
+CONTROL_HOLD = 10.0
 
 
 class Worker(QThread):
@@ -116,7 +119,8 @@ class Worker(QThread):
             self._run_demo()
             return
         while not self._stop:
-            dme = jbc_dme.DME(self.port, allow_write=self.write, control=self.control)
+            dme = jbc_dme.DME(self.port, allow_write=self.write, control=self.control,
+                              control_hold=CONTROL_HOLD)
             try:
                 info = dme.connect()
                 self.connectedChanged.emit(True, "connected", info)

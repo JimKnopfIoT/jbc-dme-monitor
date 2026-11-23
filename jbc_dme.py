@@ -203,10 +203,16 @@ class StationError(Exception):
 class DME:
     """Connection to a DME-2A. Not thread-safe: use it from one thread."""
 
-    def __init__(self, path=None, allow_write=False, control=False):
+    def __init__(self, path=None, allow_write=False, control=False, control_hold=0.0):
         self.path = path or find_port()
         self.allow_write = allow_write
         self.control = control and allow_write
+        # Seconds to stay in control mode (":C") after the last write. The front
+        # panel polls the USB control state only every few seconds; a shorter
+        # session goes unnoticed, and the panel then keeps showing the old set
+        # point and a frozen tip temperature. 0 = leave control mode at once.
+        self.control_hold = control_hold
+        self._ctl_until = None
         self.limits = (TEMP_ABS_MIN, TEMP_ABS_MAX)
         self.fd = None
         self.dec = Decoder()
@@ -231,6 +237,12 @@ class DME:
         self.fd = fd
 
     def close(self):
+        if self.fd is not None and self._ctl_until is not None:
+            self._ctl_until = None
+            try:
+                self._set_mode(b":M")
+            except (OSError, StationError):
+                pass
         if self.fd is not None:
             try:
                 os.close(self.fd)
@@ -563,14 +575,17 @@ class DME:
 
     def write_session(self, writes):
         """Send [(cmd, payload, label)] in one control session. Returns
-        [(label, error or None)]. Afterwards the connection is fresh (":N")."""
+        [(label, error or None)]. Afterwards the connection is fresh (":N"),
+        or, with control_hold, still in control mode until release_control()
+        sees the hold time run out."""
         if not self.allow_write:
             raise StationError("read-only connection")
         res = []
         if not writes:
             return res
-        if self.control and not self._set_mode(b":C"):
+        if self.control and self._ctl_until is None and not self._set_mode(b":C"):
             raise StationError("control mode refused")
+        hold = self.control and self.control_hold > 0
         try:
             for cmd, payload, label in writes:
                 r = self.transact(cmd, payload, timeout=0.6)
@@ -581,14 +596,29 @@ class DME:
                     res.append((label, f"refused (error {err})"))
                 else:
                     res.append((label, None))
+        except BaseException:
+            hold = False
+            raise
         finally:
-            if self.control:
-                # Leave control mode. The station only accepts ":C" again from the
-                # state ":N" it reports after a fresh handshake (":M" -> ":C" is
-                # refused with error 5), so reconnect to get back to ":N".
-                self._set_mode(b":M")
-                self._reconnect()
+            if hold:
+                self._ctl_until = time.monotonic() + self.control_hold
+            elif self.control:
+                self._ctl_until = None
+                self._leave_control()
         return res
+
+    def release_control(self, force=False):
+        """Leave a held control session once its hold time is over (or now)."""
+        if self._ctl_until is not None and (force or time.monotonic() >= self._ctl_until):
+            self._ctl_until = None
+            self._leave_control()
+
+    def _leave_control(self):
+        # The station only accepts ":C" again from the state ":N" it reports after
+        # a fresh handshake (":M" -> ":C" is refused with error 5), so reconnect
+        # to get back to ":N".
+        self._set_mode(b":M")
+        self._reconnect()
 
     def apply_settings(self, new, old=None):
         """Write all differences between the station and `new`, read back.
@@ -679,6 +709,7 @@ class DME:
         self._write_levels(p, tool, lv)
 
     def read_all(self):
+        self.release_control()
         ports = [self.read_port(p) for p in range(4)]
         if all(p["temp"] is None and p["tool_id"] == 0 for p in ports):
             raise StationError("station does not respond")

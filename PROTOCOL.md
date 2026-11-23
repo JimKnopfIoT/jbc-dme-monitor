@@ -144,8 +144,25 @@ hibernation stays in hibernation when its level or level temperature changes.
 - Limits: `164` `M_R_MINTEMP` / `162` `M_R_MAXTEMP`, 2 bytes uint16 LE ÷ 9;
   JBC's software also limits to 90…500 °C.
 
-Not yet verified: whether the front panel is locked during the short control
-phase.
+#### The front panel and control mode
+
+The front panel does not get told about control mode; it polls the USB control
+state itself, in turn with its other connection states and about 2 s apart.
+A short session (`:C`, `52`, `:M` within a second) goes unnoticed. The station
+then regulates to the new value, but the panel keeps showing the old set point
+and its tip temperature stops updating until the next operation at the front.
+
+When the panel does see `:C`, it shows a USB symbol ("U") in its top bar and
+switches to a monitor mode. After `:M` it reads all station parameters again,
+the set point and levels included, and shows the new values.
+
+So `DME(control_hold=s)` stays in control mode for `s` seconds after the last
+write (reads go on as usual; further writes in that time need no new `:C`) and
+`read_all()` leaves it once the time is up. 10 s works on the DME-2A: the U
+appears for a few seconds and the panel follows with a short delay. Without
+`control_hold` every write leaves control mode at once, as before.
+
+Not yet verified: whether the front panel can be operated while the U is shown.
 
 ### Settings
 
