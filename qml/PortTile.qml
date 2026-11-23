@@ -10,6 +10,10 @@ Rectangle {
     property int histLength: 360
     property int histSeconds: 180
     property real sp: 14
+    property var ctl: null
+    readonly property bool writable: hasTool && ctl !== null && ctl.writable
+    readonly property int tMin: ctl && ctl.info.min_temp ? ctl.info.min_temp : 90
+    readonly property int tMax: ctl && ctl.info.max_temp ? ctl.info.max_temp : 450
 
     readonly property string st: (online && d) ? d.state : "none"
     readonly property color sc: T.stateColor(st)
@@ -125,11 +129,68 @@ Rectangle {
             Repeater {
                 model: (tile.hasTool && tile.d.levels) ? tile.d.levels : []
                 Pill {
-                    label: modelData === null ? "–" : Math.round(modelData) + "°"
-                    tint: index === tile.d.level ? tile.tc : T.textDim
-                    filled: index === tile.d.level
-                    dim: modelData === null
+                    id: lvPill
+                    readonly property bool active: index === tile.d.level
+                    readonly property bool usable: modelData !== null
+                    // value shown while the wheel is turning, until the station reports it
+                    property real pending: NaN
+                    readonly property bool busy: !isNaN(pending)
+                    label: !usable ? "–" : Math.round(busy ? pending : modelData) + "°"
+                    tint: busy ? T.amber : (active ? tile.tc : T.textDim)
+                    filled: active || busy
+                    dim: !usable
                     size: tile.sp * 0.8
+                    scale: lvMouse.containsMouse && tile.writable && usable ? 1.08 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 120 } }
+
+                    readonly property var value: modelData
+                    onValueChanged: if (busy && value !== null
+                                        && Math.round(value) === Math.round(pending)) {
+                        pending = NaN
+                        giveUp.stop()
+                    }
+
+                    // send 0.7 s after the last wheel step, not on every step
+                    Timer {
+                        id: commit
+                        interval: 700
+                        onTriggered: {
+                            tile.ctl.setLevelTemp(tile.portNo - 1, index, Math.round(lvPill.pending))
+                            giveUp.restart()
+                        }
+                    }
+                    // station did not take the value: show the real value again
+                    Timer { id: giveUp; interval: 4000; onTriggered: lvPill.pending = NaN }
+
+                    MouseArea {
+                        id: lvMouse
+                        anchors.fill: parent
+                        anchors.margins: -3
+                        enabled: tile.writable && lvPill.usable
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onDoubleClicked: if (!lvPill.active) tile.ctl.selectLevel(tile.portNo - 1, index)
+                        onWheel: (wheel) => {
+                            var mods = Qt.ControlModifier | Qt.ShiftModifier
+                            if (!lvPill.active || (wheel.modifiers & mods) !== mods) {
+                                wheel.accepted = false
+                                return
+                            }
+                            // Shift turns the wheel into horizontal scrolling on some systems
+                            var dl = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
+                            acc += dl
+                            var steps = Math.trunc(acc / 120)
+                            if (steps === 0) return
+                            acc -= steps * 120
+                            var base = lvPill.busy ? lvPill.pending : Math.round(modelData)
+                            var v = Math.round((base + steps * 5) / 5) * 5
+                            lvPill.pending = Math.max(tile.tMin, Math.min(tile.tMax, v))
+                            giveUp.stop()
+                            commit.restart()
+                        }
+                        property real acc: 0
+                    }
                 }
             }
             Item { Layout.fillWidth: true }

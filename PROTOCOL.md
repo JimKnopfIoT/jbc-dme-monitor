@@ -113,6 +113,35 @@ the base value.
 
 ## Write commands
 
-They exist (set temperature, levels, sleep times, locks, firmware update …).
-This project deliberately uses **none** of them. `jbc_dme.py` only allows the commands
-listed above plus the handshake and refuses everything else.
+The station has many (set temperature, levels, sleep times, locks, firmware
+update …). `jbc_dme.py` refuses all of them unless it is opened with
+`allow_write=True`, and even then it only sends:
+
+| CMD | Name | Request |
+|---|---|---|
+| 52 | `M_W_LEVELSTEMPS` | 13 bytes: bytes 0–10 as in the reply of `51`, then `port, tool` |
+| 225 | `M_W_USB_CONNECTSTATUS` | `":C"` before and `":M"` after each write (`control=True`) |
+
+Verified on the station (DME_TCH_04, SW 8886937, 2026-11-23):
+
+- In the state `":N"` (every fresh connection) the station answers `52` with
+  `CMD 21` (NACK). Writing needs control mode.
+- `225 ":C"` is accepted only from `":N"`. From `":M"` it is refused with
+  `CMD 21`, data `05 e1 00 00 00`. `":N"` itself cannot be written (NACK).
+  A new connection (close the port, wait for the next handshake) brings the
+  station back to `":N"`.
+- Successful writes are acknowledged with the **same** cmd and data starting with
+  `0x06` (`225` → `[06]`, `52` → `[06, port, tool]`), not with a `CMD 6` frame.
+  A refusal comes as a `CMD 21` frame: `[error, cmd, 0, 0, 0]`.
+
+So every write is: `225 ":C"`, `52`, `225 ":M"`, reconnect (about 3.5 s in all).
+Like JBC's software, `jbc_dme.py` then reads the levels back with `51`. A tool in
+hibernation stays in hibernation when its level or level temperature changes.
+
+- Activate a level: byte 0 = 1, byte 1 = level 0…2.
+- Change a level: bytes 3–4 / 6–7 / 9–10 = °C × 9, uint16 LE. Only enabled levels.
+- Limits: `164` `M_R_MINTEMP` / `162` `M_R_MAXTEMP`, 2 bytes uint16 LE ÷ 9;
+  JBC's software also limits to 90…500 °C.
+
+Not yet verified: whether the front panel is locked during the short control
+phase.

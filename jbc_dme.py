@@ -15,8 +15,13 @@ Connection:
     The PC acknowledges every handshake with data [0x06], src = pc | 0x80.
     Requests then use FID 1..239.
 
-This library only sends the commands in READ_ONLY_COMMANDS. Anything else is
-refused so the station is never changed.
+By default this library only sends the commands in READ_ONLY_COMMANDS and
+refuses everything else, so the station is never changed. With
+DME(allow_write=True) it additionally sends M_W_LEVELSTEMPS (52), and only for
+the temperature levels (set_level_temp, select_level). The DME-2A answers
+52 with NACK in monitor mode, so with control=True every write is wrapped like
+JBC's own software does it: 225 ":C", 52, 225 ":M", followed by a reconnect
+(only from the ":N" state of a fresh connection does the station accept ":C").
 """
 import glob
 import os
@@ -31,12 +36,24 @@ CMD_INF_PORT = 48
 CMD_R_LEVELSTEMPS = 51
 CMD_R_SELECTTEMP = 80
 CMD_R_TIPTEMP = 82
+CMD_R_MAXTEMP = 162
+CMD_R_MINTEMP = 164
 CMD_R_USB_CONNECTSTATUS = 224
+CMD_W_LEVELSTEMPS = 52
+CMD_W_USB_CONNECTSTATUS = 225
+CMD_ACK = 6
+CMD_NACK = 21
 
 READ_ONLY_COMMANDS = {
     CMD_HS, CMD_FIRMWARE, CMD_INF_PORT, CMD_R_LEVELSTEMPS,
-    CMD_R_SELECTTEMP, CMD_R_TIPTEMP, CMD_R_USB_CONNECTSTATUS,
+    CMD_R_SELECTTEMP, CMD_R_TIPTEMP, CMD_R_MAXTEMP, CMD_R_MINTEMP,
+    CMD_R_USB_CONNECTSTATUS,
 }
+WRITE_COMMANDS = {CMD_W_LEVELSTEMPS}
+
+# absolute limits of JBC's software (CTemperature.IsValid: 810..4500 = 90..500 °C)
+TEMP_ABS_MIN = 90
+TEMP_ABS_MAX = 500
 
 TOOLS = {
     0: "", 1: "T210", 2: "T245", 3: "PA", 4: "HT", 5: "DS", 6: "DR",
@@ -140,8 +157,11 @@ class StationError(Exception):
 class DME:
     """Connection to a DME-2A. Not thread-safe: use it from one thread."""
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, allow_write=False, control=False):
         self.path = path or find_port()
+        self.allow_write = allow_write
+        self.control = control and allow_write
+        self.limits = (TEMP_ABS_MIN, TEMP_ABS_MAX)
         self.fd = None
         self.dec = Decoder()
         self.st = self.pc = None
@@ -174,7 +194,9 @@ class DME:
         self.st = self.pc = None
 
     def _send(self, src, cmd, fid, data=b""):
-        if cmd not in READ_ONLY_COMMANDS:
+        ok = cmd in READ_ONLY_COMMANDS or (self.allow_write and (
+            cmd in WRITE_COMMANDS or (self.control and cmd == CMD_W_USB_CONNECTSTATUS)))
+        if not ok:
             raise StationError(f"command {cmd} is not allowed (read-only)")
         os.write(self.fd, encode(src, self.st, fid, cmd, data))
 
@@ -202,14 +224,28 @@ class DME:
             time.sleep(0.003)
 
     def request(self, cmd, data=b"", timeout=0.25):
+        r = self.transact(cmd, data, timeout)
+        return r[1] if r and r[0] == cmd else None
+
+    def transact(self, cmd, data=b"", timeout=0.25):
+        """Send a request; return (reply cmd, data) or None. Reply cmd is
+        cmd itself, CMD_ACK or CMD_NACK."""
         self.fid = self.fid % 239 + 1
         fid = self.fid
         self._send(self.pc, cmd, fid, data)
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             for f in self._read(end - time.monotonic()):
-                if f["cmd"] == cmd and f["fid"] == fid:
-                    return f["data"]
+                if f["fid"] == fid and f["cmd"] in (cmd, CMD_ACK, CMD_NACK):
+                    data = bytes(f["data"])
+                    # the DME-2A acknowledges writes with the same cmd and data
+                    # [0x06] (ACK) or [0x15] (NACK) instead of a cmd 6/21 frame
+                    if cmd not in READ_ONLY_COMMANDS and f["cmd"] == cmd and len(data) == 1:
+                        if data[0] == CMD_ACK:
+                            return CMD_ACK, b""
+                        if data[0] == CMD_NACK:
+                            return CMD_NACK, b""
+                    return f["cmd"], data
         return None
 
     # -- Connection ------------------------------------------------------
@@ -240,6 +276,16 @@ class DME:
             "hw": parts[3] if len(parts) > 3 else "",
             "port": self.path,
         }
+        if self.allow_write:
+            lo = self.request(CMD_R_MINTEMP)
+            hi = self.request(CMD_R_MAXTEMP)
+            lo = round(_le(lo[0:2]) / 9) if lo and len(lo) >= 2 else TEMP_ABS_MIN
+            hi = round(_le(hi[0:2]) / 9) if hi and len(hi) >= 2 else TEMP_ABS_MAX
+            self.limits = (max(lo, TEMP_ABS_MIN), min(hi, TEMP_ABS_MAX))
+        self.info["min_temp"], self.info["max_temp"] = self.limits
+        if self.allow_write:
+            mode = self.request(CMD_R_USB_CONNECTSTATUS)
+            self.info["usb_mode"] = bytes(mode).decode("ascii", "replace") if mode else ""
         return self.info
 
     # -- Data ------------------------------------------------------------
@@ -275,6 +321,7 @@ class DME:
             temps = [_le(lv[3 + 3 * i:5 + 3 * i]) / 9.0 for i in range(3)]
             on = [bool(lv[2 + 3 * i]) for i in range(3)]
             r["levels"] = [t if o else None for t, o in zip(temps, on)]
+            r["levels_on"] = bool(lv[0])
             if lv[0] and lv[1] < 3:
                 r["level"] = lv[1]
                 r["set"] = temps[lv[1]]
@@ -293,6 +340,88 @@ class DME:
         else:
             r["state"] = "work"
         return r
+
+    # -- Writing (only with allow_write=True) -----------------------------
+    def _levels_now(self, p):
+        """Fresh M_R_LEVELSTEMPS reply of port p (0..3) and its tool id."""
+        inf = self.request(CMD_INF_PORT, bytes([p]))
+        if not inf or not inf[0]:
+            raise StationError(f"no tool on port {p + 1}")
+        lv = self.request(CMD_R_LEVELSTEMPS, bytes([p, inf[0]]))
+        if not lv or len(lv) < 11:
+            raise StationError(f"port {p + 1}: levels not readable")
+        return bytearray(lv[:11]), inf[0]
+
+    def _set_mode(self, mode):
+        """225 M_W_USB_CONNECTSTATUS: b":C" = control, b":M" = monitor. True on ACK."""
+        r = self.transact(CMD_W_USB_CONNECTSTATUS, mode, timeout=0.6)
+        return bool(r and r[0] == CMD_ACK)
+
+    def _reconnect(self):
+        """Close and handshake again. Right after closing the station needs a
+        moment before it offers a new handshake."""
+        limits = self.limits
+        self.close()
+        for i in range(3):
+            time.sleep(0.5)
+            try:
+                self.connect(timeout=3.0)
+                break
+            except StationError:
+                if i == 2:
+                    raise
+        self.limits = limits
+
+    def _write_levels(self, p, tool, lv):
+        """Write like JBC's own software: control mode, write, back to monitor mode
+        right away, so the station is in control mode only for this one command."""
+        payload = bytes(lv[:11]) + bytes([p, tool])
+        if self.control and not self._set_mode(b":C"):
+            raise StationError(f"port {p + 1}: control mode refused")
+        try:
+            r = self.transact(CMD_W_LEVELSTEMPS, payload, timeout=0.6)
+        finally:
+            if self.control:
+                # Leave control mode. The station only accepts ":C" again from the
+                # state ":N" it reports after a fresh handshake (":M" -> ":C" is
+                # refused with error 5), so reconnect to get back to ":N".
+                self._set_mode(b":M")
+                self._reconnect()
+        back = self.request(CMD_R_LEVELSTEMPS, bytes([p, tool]))
+        if back and bytes(back[:11]) == bytes(lv[:11]):
+            self._levels[p], self._levels_t[p] = back, time.monotonic()
+            return True
+        what = "no reply" if r is None else ("NACK" if r[0] == CMD_NACK else "not applied")
+        raise StationError(f"port {p + 1}: write refused ({what})")
+
+    def set_level_temp(self, p, level, celsius):
+        """Set temperature of level 0..2 on port 0..3. Returns the value set."""
+        if not self.allow_write:
+            raise StationError("read-only connection")
+        if level not in (0, 1, 2):
+            raise ValueError("level must be 0..2")
+        c = int(round(celsius))
+        lo, hi = self.limits
+        if not lo <= c <= hi:
+            raise StationError(f"{c} °C outside {lo}…{hi} °C")
+        lv, tool = self._levels_now(p)
+        if not lv[2 + 3 * level]:
+            raise StationError(f"level {level + 1} is disabled")
+        lv[3 + 3 * level:5 + 3 * level] = (c * 9).to_bytes(2, "little")
+        self._write_levels(p, tool, lv)
+        return c
+
+    def select_level(self, p, level):
+        """Make level 0..2 the active level of port 0..3 (levels get switched on)."""
+        if not self.allow_write:
+            raise StationError("read-only connection")
+        if level not in (0, 1, 2):
+            raise ValueError("level must be 0..2")
+        lv, tool = self._levels_now(p)
+        if not lv[2 + 3 * level]:
+            raise StationError(f"level {level + 1} is disabled")
+        lv[0], lv[1] = 1, level
+        self._write_levels(p, tool, lv)
 
     def read_all(self):
         ports = [self.read_port(p) for p in range(4)]

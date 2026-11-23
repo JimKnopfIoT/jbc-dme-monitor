@@ -45,6 +45,40 @@ Window {
         }
     }
 
+    // short feedback for write commands
+    Rectangle {
+        id: toast
+        z: 10
+        property bool ok: true
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: win.sp * 3.2
+        width: toastText.implicitWidth + win.sp * 2.4
+        height: toastText.implicitHeight + win.sp * 1.0
+        radius: height / 2
+        color: T.bgMid
+        border.width: 1
+        border.color: ok ? T.green : T.red
+        opacity: 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        Text {
+            id: toastText
+            anchors.centerIn: parent
+            color: toast.ok ? T.text : T.red
+            font.family: T.font; font.pixelSize: win.sp * 0.95
+        }
+        Timer { id: toastTimer; interval: 2500; onTriggered: toast.opacity = 0 }
+        Connections {
+            target: win.station
+            function onNotice(ok, text) {
+                toast.ok = ok
+                toastText.text = text
+                toast.opacity = 1
+                toastTimer.restart()
+            }
+        }
+    }
+
     property bool anyWorking: {
         for (var i = 0; i < ports.length; ++i)
             if (ports[i].state === "work") return true
@@ -105,7 +139,11 @@ Window {
                 RowLayout {
                     Layout.alignment: Qt.AlignRight
                     spacing: 8
-                    Pill { label: "READ-ONLY"; tint: T.cyan; size: win.sp * 0.75 }
+                    Pill {
+                        label: station.writable ? "LEVELS EDITABLE" : "READ-ONLY"
+                        tint: station.writable ? T.amber : T.cyan
+                        size: win.sp * 0.75
+                    }
                     Text {
                         id: clock
                         color: T.textDim
@@ -141,6 +179,7 @@ Window {
                     histLength: station.histLength
                     histSeconds: station.histSeconds
                     sp: win.sp
+                    ctl: win.station
                 }
             }
         }
@@ -150,7 +189,9 @@ Window {
             Layout.fillWidth: true
             Text {
                 text: "History " + Math.round(station.histSeconds / 60) + " min  ·  polling 2×/s  ·  "
-                      + "monitor only, the station stays usable"
+                      + (station.writable
+                         ? "level: double click = activate, Ctrl+Shift+wheel = ±5 °C"
+                         : "monitor only, the station stays usable")
                 color: T.textLow
                 font.family: T.font; font.pixelSize: win.sp * 0.8
                 font.weight: Font.Light

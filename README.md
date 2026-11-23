@@ -2,7 +2,9 @@
 
 Reads a JBC DME-2A soldering station over its USB-B port and shows all four ports
 live: tip and set temperature, temperature levels, state, power, history.
-Read-only, the station stays fully usable.
+The station stays fully usable. The only thing the monitor changes are the
+three temperature levels, and only when you ask for it (see below);
+`--readonly` turns that off completely.
 
 ![P1 heating up](screenshots/live-working.png)
 
@@ -15,7 +17,19 @@ pip install -r requirements.txt
 ./jbc-gui.sh                  # find the station automatically
 ./jbc-gui.sh --port /dev/ttyACM0
 ./jbc-gui.sh --demo           # without a station
+./jbc-gui.sh --readonly       # never write to the station
 ```
+
+### Temperature levels
+
+| Action | Effect |
+|---|---|
+| Double click on a level | makes it the active level |
+| Ctrl+Shift+mouse wheel on the **active** level | ±5 °C per notch, sent 0.7 s after the last notch |
+
+The mouse has to be on the level. Without Ctrl+Shift the wheel does nothing.
+Values are limited to the station's min/max temperature. After writing, the
+levels are read back. A short message confirms or reports the error.
 
 Access to `/dev/ttyACM*` via the `uucp` or `dialout` group.
 
@@ -30,7 +44,9 @@ for p in d.read_all():
 d.close()
 ```
 
-`jbc_dme.py` has no dependencies and only sends read commands.
+`jbc_dme.py` has no dependencies. By default it only sends read commands;
+`DME(allow_write=True)` additionally allows `set_level_temp(port, level, °C)`
+and `select_level(port, level)` (ports and levels count from 0).
 Protocol: [PROTOCOL.md](PROTOCOL.md).
 
 ## Tools

@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""JBC DME-2A Monitor - desktop GUI (PySide6/QML), read-only.
+"""JBC DME-2A Monitor - desktop GUI (PySide6/QML).
 
 Usage:
     python3 jbc_gui.py                 # find the station automatically
     python3 jbc_gui.py --port /dev/ttyACM0
+    python3 jbc_gui.py --readonly      # never write to the station
     python3 jbc_gui.py --demo          # no station, simulated data
     python3 jbc_gui.py --demo --screenshot shot.png
+
+Temperature levels (only without --readonly):
+    double click on a level           -> make it the active level
+    Ctrl+Shift+wheel on active level  -> change its temperature in 5 °C steps
 """
 import argparse
 import math
 import os
+import queue
 import random
 import sys
 import time
@@ -30,27 +36,54 @@ POLL_INTERVAL = 0.5
 class Worker(QThread):
     connectedChanged = Signal(bool, str, dict)
     data = Signal(list)
+    notice = Signal(bool, str)      # ok, text
 
-    def __init__(self, port=None, demo=False):
+    def __init__(self, port=None, demo=False, write=False, control=False):
         super().__init__()
         self.port = port
         self.demo = demo
+        self.write = write
+        self.control = control
         self._stop = False
+        self._cmds = queue.Queue()
 
     def stop(self):
         self._stop = True
+
+    def submit(self, *cmd):
+        """Queue a write command, executed in the worker thread between polls."""
+        self._cmds.put(cmd)
+
+    def _do_cmds(self, dme):
+        while True:
+            try:
+                cmd = self._cmds.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                if cmd[0] == "select":
+                    _, p, lvl = cmd
+                    dme.select_level(p, lvl)
+                    self.notice.emit(True, f"P{p + 1}: level {lvl + 1} active")
+                elif cmd[0] == "temp":
+                    _, p, lvl, c = cmd
+                    c = dme.set_level_temp(p, lvl, c)
+                    self.notice.emit(True, f"P{p + 1}: level {lvl + 1} = {c} °C")
+            except (ValueError, jbc_dme.StationError) as e:
+                self.notice.emit(False, str(e))
 
     def run(self):
         if self.demo:
             self._run_demo()
             return
         while not self._stop:
-            dme = jbc_dme.DME(self.port)
+            dme = jbc_dme.DME(self.port, allow_write=self.write, control=self.control)
             try:
                 info = dme.connect()
                 self.connectedChanged.emit(True, "connected", info)
                 while not self._stop:
                     t0 = time.monotonic()
+                    self._do_cmds(dme)
                     self.data.emit(dme.read_all())
                     time.sleep(max(0.0, POLL_INTERVAL - (time.monotonic() - t0)))
             except (OSError, jbc_dme.StationError) as e:
@@ -65,7 +98,7 @@ class Worker(QThread):
     def _run_demo(self):
         self.connectedChanged.emit(True, "Demo", {
             "protocol": "02", "model": "DME_TCH_04", "sw": "8886937",
-            "hw": "0012408C", "port": "demo"})
+            "hw": "0012408C", "port": "demo", "min_temp": 90, "max_temp": 450})
         sim = [
             {"tool": "T210", "id": 1, "levels": [270, 370, 450], "lvl": 1, "temp": 120.0, "state": "work"},
             {"tool": "T245", "id": 2, "levels": [220, 370, 450], "lvl": 0, "temp": 200.0, "state": "sleep"},
@@ -75,6 +108,17 @@ class Worker(QThread):
         t = 0
         while not self._stop:
             t += 1
+            while not self._cmds.empty():
+                cmd = self._cmds.get_nowait()
+                s = sim[cmd[1]]
+                if cmd[0] == "select":
+                    s["lvl"] = cmd[2]
+                    self.notice.emit(True, f"P{cmd[1] + 1}: level {cmd[2] + 1} active (demo)")
+                elif not 90 <= cmd[3] <= 450:
+                    self.notice.emit(False, f"{cmd[3]} °C outside 90…450 °C")
+                else:
+                    s["levels"][cmd[2]] = cmd[3]
+                    self.notice.emit(True, f"P{cmd[1] + 1}: level {cmd[2] + 1} = {cmd[3]} °C (demo)")
             out = []
             for i, s in enumerate(sim):
                 target = {"work": s["levels"][s["lvl"]], "stand": 300, "sleep": 200,
@@ -86,7 +130,8 @@ class Worker(QThread):
                 out.append({"port": i + 1, "tool_id": s["id"], "tool": s["tool"], "error": 0,
                             "status": st, "state": s["state"], "temp": s["temp"],
                             "set": float(s["levels"][s["lvl"]]), "power": pw,
-                            "levels": [float(x) for x in s["levels"]], "level": s["lvl"]})
+                            "levels": [float(x) for x in s["levels"]], "level": s["lvl"],
+                            "levels_on": True})
             if t == 40:
                 sim[1]["state"] = "work"
             self.data.emit(out)
@@ -95,16 +140,19 @@ class Worker(QThread):
 
 class Station(QObject):
     changed = Signal()
+    notice = Signal(bool, str)
 
-    def __init__(self, port=None, demo=False):
+    def __init__(self, port=None, demo=False, write=False, control=False):
         super().__init__()
+        self._writable = write
         self._connected = False
         self._message = "looking for station …"
         self._info = {}
         self._ports = []
         self._hist = [[] for _ in range(4)]
         self._last = 0.0
-        self._worker = Worker(port, demo)
+        self._worker = Worker(port, demo, write, control)
+        self._worker.notice.connect(self.notice)
         self._worker.connectedChanged.connect(self._on_conn)
         self._worker.data.connect(self._on_data)
         self._worker.start()
@@ -154,6 +202,20 @@ class Station(QObject):
     def ports(self):
         return self._ports
 
+    @Property(bool, constant=True)
+    def writable(self):
+        return self._writable
+
+    @Slot(int, int)
+    def selectLevel(self, port, level):
+        if self._writable:
+            self._worker.submit("select", port, level)
+
+    @Slot(int, int, int)
+    def setLevelTemp(self, port, level, celsius):
+        if self._writable:
+            self._worker.submit("temp", port, level, celsius)
+
     @Property(int, constant=True)
     def histLength(self):
         return int(HIST_SECONDS / POLL_INTERVAL)
@@ -164,8 +226,9 @@ class Station(QObject):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="JBC DME-2A Monitor (read-only)")
+    ap = argparse.ArgumentParser(description="JBC DME-2A Monitor")
     ap.add_argument("--port")
+    ap.add_argument("--readonly", action="store_true", help="never write to the station")
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--screenshot")
     ap.add_argument("--delay", type=float, default=8.0)
@@ -176,7 +239,8 @@ def main():
     app.setApplicationName("JBC DME Monitor")
     app.setWindowIcon(QIcon(os.path.join(HERE, "qml", "icon.svg")))
 
-    station = Station(args.port, args.demo)
+    # the station NACKs writes in monitor mode: every write goes :C -> 52 -> :M + reconnect
+    station = Station(args.port, args.demo, write=not args.readonly, control=not args.readonly)
     engine = QQmlApplicationEngine()
     w, h = (int(x) for x in args.size.split("x"))
     engine.setInitialProperties({"station": station, "width": w, "height": h})
