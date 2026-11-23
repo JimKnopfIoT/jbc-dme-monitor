@@ -105,6 +105,17 @@ DME-2A (`DME_TCH_04`, SW 8886937) with T210, T245, PA, DT530.
 JBC is a trademark of JBC Soldering S.L. Not affiliated with JBC; contains no code
 or files from JBC.
 
+## Related projects
+
+- [iSoSta](https://github.com/JimKnopfIoT/harbour-isosta) — the same on a Sailfish OS phone: monitor,
+  temperature levels and settings, the station on the phone's USB port or
+  on a PC with the labcam server. Settings files are shared with this monitor.
+- [LabCam](https://github.com/JimKnopfIoT/labcam-phone) — Sailfish OS camera with a live overlay of the
+  bench instruments, the JBC station included; server side in
+  [labcam-pc](https://github.com/JimKnopfIoT/labcam-pc).
+- [harbour-ircam](https://github.com/JimKnopfIoT/harbour-ircam) — thermal camera viewer for the InfiRay
+  P2 Pro on Sailfish OS.
+
 ## License
 
 MIT
