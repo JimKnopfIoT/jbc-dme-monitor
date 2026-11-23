@@ -1,6 +1,7 @@
-# JBC DME-2A — USB protocol (read part)
+# JBC DME-2A — USB protocol
 
-The USB interface of the JBC DME-2A, as far as needed to **read** the station.
+The USB interface of the JBC DME-2A, as far as needed to read the station and
+change its settings.
 Verified on `DME_TCH_04`, software `8886937`, hardware `0012408C`.
 
 Command numbers and field formats were determined for interoperability from JBC's
@@ -145,3 +146,47 @@ hibernation stays in hibernation when its level or level temperature changes.
 
 Not yet verified: whether the front panel is locked during the short control
 phase.
+
+### Settings
+
+`jbc_dme.py` also reads and writes the settings of the station menu. Formats as
+JBC's own software uses them for protocol 02. `tool` = tool number of the tool
+in the port; settings marked *per tool* are stored per tool type.
+Temperatures are uint16 LE ÷ 9 = °C. Writes need control mode like `52`.
+
+| Read | Write | Setting | Request (read) | Reply / write data |
+|---|---|---|---|---|
+| 64 | 65 | sleep delay, per tool | `[port, tool]` | `[minutes 0…9, on, port, tool]`; older firmware reports "off" as minutes `255` |
+| 66 | 67 | sleep temperature, per tool | `[port, tool]` | `[T lo, T hi, port, tool]` |
+| 68 | 69 | hibernation delay, per tool | `[port, tool]` | `[minutes 0…60 step 5, on, port, tool]` |
+| 70 | 71 | temperature adjust, per tool | `[port, tool]` | `[T lo, T hi, port, tool]`, **signed**, ±450 (= ±50 °C) |
+| 80 | 81 | set temperature (levels off) | `[port]` | `[T lo, T hi, port]` |
+| 136 | 137 | port lock | `[port]` | `[locked, port]`, 0 = enabled |
+| 162 | 163 | max. temperature | – | `[T lo, T hi]` |
+| 164 | 165 | min. temperature | – | `[T lo, T hi]` |
+| 168 | 169 | PIN lock | – | `[on]` |
+| 170 | 171 | power limit | – | uint16 LE, 30…160 (W) in steps of 10 |
+| 172 | 173 | PIN | – | 4 ASCII digits |
+| 177 | 178 | station name | – | UTF-8, max. 16 bytes |
+| 30 | – | device ID | – | 16 bytes (JBC uses it as station UUID) |
+| 174 | – | station error | – | `[code]`, 0 = none |
+| 175 | – | transformer temperature | – | `[T lo, T hi]` |
+
+Checked on the DME-2A (SW 8886937, 2026-11-23):
+
+- Read: 64, 66, 68, 70, 80, 136, 162, 164, 168, 174, 175 answer as in the table.
+  Sleep/hibernation "off" was not seen; all ports reported `on = 1`.
+- **No reply** to 170 (power limit) and 30 (device ID). 177 (name) answers
+  with no data when no name is set. 172 (PIN) answers with four spaces, the PIN
+  is not readable.
+- Write: 67 (sleep temperature) acknowledged and applied, also two writes in
+  one control session (`:C`, 67, 67, `:M`, reconnect, 3.6 s in all).
+  The other write commands are not tested yet.
+- The station's min. temperature can be above the sleep temperature (here
+  180 °C vs. 90 °C); sleep temperatures are not limited by it.
+
+Limits of JBC's feature table for `DME` / `TCH` version ≥ 4: station
+temperature 90…450 °C, power limit up to 160, port lock supported.
+
+Never sent by `jbc_dme.py`: `31` write device ID, `32`/`176` reset, `34`…`40`
+firmware update, `49` reset port tool, `97` remote mode, `185` type of ground.

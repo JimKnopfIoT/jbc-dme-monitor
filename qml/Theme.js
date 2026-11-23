@@ -36,12 +36,12 @@ function stateColor(s) {
 }
 
 function stateLabel(s) {
-    if (s === "work")  return "WORKING"
-    if (s === "stand") return "STAND"
-    if (s === "sleep") return "SLEEP"
-    if (s === "hiber") return "HIBERNATION"
-    if (s === "error") return "ERROR"
-    return "NO TOOL"
+    if (s === "work")  return qsTr("WORKING")
+    if (s === "stand") return qsTr("STAND")
+    if (s === "sleep") return qsTr("SLEEP")
+    if (s === "hiber") return qsTr("HIBERNATION")
+    if (s === "error") return qsTr("ERROR")
+    return qsTr("NO TOOL")
 }
 
 // temperature -> colour: cold cyan, warm teal/amber, hot orange, too hot red

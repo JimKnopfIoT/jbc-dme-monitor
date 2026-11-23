@@ -8,6 +8,8 @@ Rectangle {
     property bool filled: false
     property bool dim: false
     property real size: 12
+    property bool clickable: false
+    signal clicked()
     implicitWidth: txt.implicitWidth + size * 1.6
     implicitHeight: txt.implicitHeight + size * 0.7
     radius: height / 2
@@ -15,6 +17,17 @@ Rectangle {
     border.width: 1
     border.color: T.alpha(tint, dim ? 0.18 : (filled ? 0.8 : 0.45))
     Behavior on color { ColorAnimation { duration: 250 } }
+    scale: pillMouse.containsMouse ? 1.06 : 1.0
+    Behavior on scale { NumberAnimation { duration: 120 } }
+
+    MouseArea {
+        id: pillMouse
+        anchors.fill: parent
+        enabled: pill.clickable
+        hoverEnabled: true
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: pill.clicked()
+    }
 
     Text {
         id: txt

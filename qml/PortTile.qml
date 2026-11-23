@@ -97,7 +97,7 @@ Rectangle {
                     font.weight: Font.Light
                 }
                 Text {
-                    text: isNaN(tile.setT) ? "Set –" : "Set " + Math.round(tile.setT) + " °C"
+                    text: isNaN(tile.setT) ? qsTr("Set –") : qsTr("Set %1 °C").arg(Math.round(tile.setT))
                     color: T.textDim
                     font.family: T.font; font.pixelSize: tile.sp * 1.0
                     font.weight: Font.Light
@@ -122,7 +122,7 @@ Rectangle {
             spacing: tile.sp * 0.5
             visible: tile.hasTool
             Text {
-                text: "Levels"
+                text: qsTr("Levels")
                 color: T.textLow
                 font.family: T.font; font.pixelSize: tile.sp * 0.8
             }
@@ -195,7 +195,7 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: "Power"
+                text: qsTr("Power")
                 color: T.textDim
                 font.family: T.font; font.pixelSize: tile.sp * 0.85; font.weight: Font.Light
             }
@@ -244,7 +244,7 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         visible: !tile.online
-        text: "not connected"
+        text: qsTr("not connected")
         color: T.textLow
         font.family: T.font; font.pixelSize: tile.sp * 1.1; font.weight: Font.Light
     }

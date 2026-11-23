@@ -7,12 +7,13 @@ Window {
     id: win
     required property var station
     visible: true
-    title: "JBC DME-2A Monitor"
+    title: qsTr("JBC DME-2A Monitor")
     minimumWidth: 720
     minimumHeight: 520
     color: T.bgBottom
 
     readonly property var ports: station.ports
+    property bool autoOpened: false
     readonly property bool wide: width > 1600
     readonly property real sp: Math.max(12, Math.min(width, height) * 0.022)
 
@@ -48,7 +49,7 @@ Window {
     // short feedback for write commands
     Rectangle {
         id: toast
-        z: 10
+        z: 30
         property bool ok: true
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
@@ -74,6 +75,7 @@ Window {
                 toast.ok = ok
                 toastText.text = text
                 toast.opacity = 1
+                toastTimer.interval = Math.max(2500, Math.min(12000, text.length * 60))
                 toastTimer.restart()
             }
         }
@@ -103,7 +105,7 @@ Window {
             ColumnLayout {
                 spacing: 2
                 Text {
-                    text: station.connected ? "CONNECTED" : "OFFLINE"
+                    text: station.connected ? qsTr("CONNECTED") : qsTr("OFFLINE")
                     color: station.connected ? T.green : T.red
                     font.family: T.font; font.pixelSize: win.sp * 1.5
                     font.weight: Font.Normal; font.letterSpacing: 1
@@ -118,7 +120,7 @@ Window {
                     font.weight: Font.Light
                 }
                 Text {
-                    text: station.connected ? (station.info.port || "") : "Connect the station via USB-B"
+                    text: station.connected ? (station.info.port || "") : qsTr("Connect the station via USB-B")
                     color: T.cyan
                     font.family: T.font; font.pixelSize: win.sp * 0.85
                     font.weight: Font.Light
@@ -140,7 +142,27 @@ Window {
                     Layout.alignment: Qt.AlignRight
                     spacing: 8
                     Pill {
-                        label: station.writable ? "LEVELS EDITABLE" : "READ-ONLY"
+                        label: "⚙  " + qsTr("SETTINGS")
+                        tint: T.cyan
+                        filled: settingsPanel.open
+                        dim: !station.connected
+                        size: win.sp * 0.75
+                        clickable: station.connected
+                        onClicked: settingsPanel.show()
+                    }
+                    Repeater {
+                        model: ["EN", "DE"]
+                        Pill {
+                            label: modelData
+                            tint: T.cyan
+                            filled: station.language === modelData.toLowerCase()
+                            size: win.sp * 0.75
+                            clickable: !filled
+                            onClicked: station.setLanguage(modelData.toLowerCase())
+                        }
+                    }
+                    Pill {
+                        label: station.writable ? qsTr("EDITABLE") : qsTr("READ-ONLY")
                         tint: station.writable ? T.amber : T.cyan
                         size: win.sp * 0.75
                     }
@@ -188,10 +210,10 @@ Window {
         RowLayout {
             Layout.fillWidth: true
             Text {
-                text: "History " + Math.round(station.histSeconds / 60) + " min  ·  polling 2×/s  ·  "
+                text: qsTr("History %1 min  ·  polling 2×/s").arg(Math.round(station.histSeconds / 60)) + "  ·  "
                       + (station.writable
-                         ? "level: double click = activate, Ctrl+Shift+wheel = ±5 °C"
-                         : "monitor only, the station stays usable")
+                         ? qsTr("level: double click = activate, Ctrl+Shift+wheel = ±5 °C  ·  more under SETTINGS")
+                         : qsTr("monitor only, the station stays usable"))
                 color: T.textLow
                 font.family: T.font; font.pixelSize: win.sp * 0.8
                 font.weight: Font.Light
@@ -213,6 +235,27 @@ Window {
                         font.letterSpacing: 0.5
                     }
                 }
+            }
+        }
+    }
+
+    SettingsPanel {
+        id: settingsPanel
+        objectName: "settingsPanel"
+        anchors.fill: parent
+        z: 20
+        ctl: win.station
+        sp: win.sp
+    }
+
+    // --settings: open the panel right after start (for screenshots)
+    Connections {
+        target: win.station
+        enabled: win.station.openSettings && !win.autoOpened
+        function onChanged() {
+            if (win.station.connected) {
+                win.autoOpened = true
+                settingsPanel.show()
             }
         }
     }
